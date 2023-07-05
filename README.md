@@ -189,7 +189,7 @@ iperf Done.
 
 # RAS на базе OpenVPN   
 #### Для выполнения необходимо:   
-* написать [Vagrantfile](https://github.com/SalnikovAnton/VPN/blob/main/Vagrantfile2 "Vagrantfile"), который будет поднимать 1 виртуальную машину serverras,
+* написать [Vagrantfile](https://github.com/SalnikovAnton/VPN/blob/main/VagrantfileRAS "Vagrantfile"), который будет поднимать 1 виртуальную машину serverras,
 * пишем роли в [serverras.yml](https://github.com/SalnikovAnton/VPN/blob/main/serverras.yml "serverras.yml") для сервера,
 * создаем [server.conf](https://github.com/SalnikovAnton/VPN/blob/main/ras/server.conf "server.conf"), [openvpn@.service](https://github.com/SalnikovAnton/VPN/blob/main/server/openvpn@.service "openvpn@.service") для сервера и [client.conf](https://github.com/SalnikovAnton/VPN/blob/main/ras/client.conf "client.conf") для клиента.
 
