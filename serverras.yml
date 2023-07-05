@@ -1,0 +1,39 @@
+---
+- name: Serverras
+  hosts: serverras
+  become: yes
+  gather_facts: false
+  tasks:
+
+  - name: update yum caсhe
+    yum:
+      update_cache: true 
+      
+  - name: install epel-release
+    yum:
+      state: present
+      name:
+        - epel-release
+      
+  - name: Install packages
+    yum:
+      name: 
+        - tcpdump
+        - openvpn
+        - easy-rsa
+        - iperf3
+        - vim
+
+  - name: Disable SELinux
+    ansible.posix.selinux:
+      state: disabled
+       
+  - name: Copy server.conf
+    copy: 
+      src=ras/server.conf
+      dest=/etc/openvpn/server.conf
+      
+  - name: Copy openvpn@.service
+    copy: 
+      src=server/openvpn@.service
+      dest=/etc/systemd/system/openvpn@.service
