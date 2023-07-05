@@ -187,11 +187,94 @@ iperf Done.
 * tap старается больше походить на реальный сетевой интерфейс, а именно он позволяет себе принимать и отправлять ARP запросы, обладает MAC адресом и может являться одним из интерфейсов сетевого моста, так как он обладает полной поддержкой ethernet - протокола канального уровня (уровень 2).
 * Интерфейс tun этой поддержки лишен, поэтому он может принимать и отправлять только IP пакеты и никак не ethernet кадры. Он не обладает MAC-адресом и не может быть добавлен в бридж. Зато он более легкий и быстрый за счет отсутствия дополнительной инкапсуляции и прекрасно подходит для тестирования сетевого стека или построения виртуальных частных сетей (VPN)
 
-#### 1) RAS на базе OpenVPN
+# RAS на базе OpenVPN   
+#### Для выполнения необходимо:   
+* написать [Vagrantfile](https://github.com/SalnikovAnton/VPN/blob/main/Vagrantfile2 "Vagrantfile"), который будет поднимать 1 виртуальную машину serverras,
+* пишем роли в [serverras](https://github.com/SalnikovAnton/VPN/blob/main/serverras.yml "serverras.yml") для сервера,
+* создаем [server.conf](https://github.com/SalnikovAnton/VPN/blob/main/ras/server.conf "server.conf"), [openvpn@.service](https://github.com/SalnikovAnton/VPN/blob/main/server/openvpn@.service "openvpn@.service") для сервера и [client.conf](https://github.com/SalnikovAnton/VPN/blob/main/ras/client.conf "client.conf") для клиента.
 
+После поднятия машины подключаемся к ней по ssh, переходим в директорию /etc/openvpn/ и инициализируем pki
+```
+[root@serverras ~]# cd /etc/openvpn/
+[root@serverras openvpn]# rpm -qa | grep easy-rsa
+easy-rsa-3.0.8-1.el8.noarch
+[root@serverras openvpn]# /usr/share/easy-rsa/3.0.8/easyrsa init-pki
 
+init-pki complete; you may now create a CA or requests.
+Your newly created PKI dir is: /etc/openvpn/pki
+```
+Сгенерируем необходимые ключи и сертификаты для сервера
+```
+[root@serverras openvpn]# echo 'rasvpn' | /usr/share/easy-rsa/3.0.8/easyrsa build-ca nopass
+Using SSL: openssl OpenSSL 1.1.1g FIPS  21 Apr 2020
+Generating RSA private key, 2048 bit long modulus (2 primes)
+***
+```
+```
+[root@serverras openvpn]# echo 'rasvpn' | /usr/share/easy-rsa/3.0.8/easyrsa gen-req server nopass
+Using SSL: openssl OpenSSL 1.1.1g FIPS  21 Apr 2020
+Generating a RSA private key
+***
+```
+```
+[root@serverras openvpn]# echo 'yes' | /usr/share/easy-rsa/3.0.8/easyrsa sign-req server server
+Using SSL: openssl OpenSSL 1.1.1g FIPS  21 Apr 2020
+***
+```
+```
+[root@serverras openvpn]# /usr/share/easy-rsa/3.0.8/easyrsa gen-dh
+Using SSL: openssl OpenSSL 1.1.1g FIPS  21 Apr 2020
+Generating DH parameters, 2048 bit long safe prime, generator 2
+***
+```
+```
+[root@serverras openvpn]# openvpn --genkey --secret ca.key
+```
+Сгенерируем сертификаты для клиента
+```
+[root@serverras openvpn]# echo 'client' | /usr/share/easy-rsa/3/easyrsa gen-req client nopass
+Using SSL: openssl OpenSSL 1.1.1g FIPS  21 Apr 2020
+Generating a RSA private key
+```
+```
+[root@serverras openvpn]# echo 'yes' | /usr/share/easy-rsa/3/easyrsa sign-req client client
+Using SSL: openssl OpenSSL 1.1.1g FIPS  21 Apr 2020
+****
+```
+Зададим параметр iroute для клиента и запускаем openvpn сервер и добавляем его в автозагрузку
+```
+[root@serverras openvpn]# echo 'iroute 10.10.10.0 255.255.255.0' > /etc/openvpn/client/client
+[root@serverras openvpn]# systemctl start openvpn@server
+[root@serverras openvpn]# systemctl enable openvpn@server
+Created symlink /etc/systemd/system/multi-user.target.wants/openvpn@server.service → /etc/systemd/system/openvpn@.service.
+```
+Скопируем следующие файлы сертификатов и ключ для клиента на хост-машину.   
+* /etc/openvpn/pki/ca.crt
+* /etc/openvpn/pki/issued/client.crt
+* /etc/openvpn/pki/private/client.key   
+После того, как все готово, подключаемся к openvpn сервер с хост-машины.
+```
+ ~/vpn/ras  sudo openvpn --config client.conf
+```
+проверяем пинг по внутреннему IP адресу сервера в туннеле.
+```
+ping -c 4 10.10.10.1    
+PING 10.10.10.1 (10.10.10.1) 56(84) bytes of data.
+64 bytes from 10.10.10.1: icmp_seq=1 ttl=63 time=3.31 ms
+64 bytes from 10.10.10.1: icmp_seq=2 ttl=63 time=15.2 ms
+64 bytes from 10.10.10.1: icmp_seq=3 ttl=63 time=38.9 ms
+64 bytes from 10.10.10.1: icmp_seq=4 ttl=63 time=4.09 ms
 
-
-
-
-
+--- 10.10.10.1 ping statistics ---
+4 packets transmitted, 4 received, 0% packet loss, time 3003ms
+rtt min/avg/max/mdev = 3.313/15.397/38.946/14.391 ms
+```
+Также проверяем командой ip r (netstat -rn) на хостовой машине, что сеть туннеля импортирована в таблицу маршрутизации.
+```
+ip r
+default via 10.0.2.2 dev eth0 proto dhcp metric 101 
+10.0.2.0/24 dev eth0 proto kernel scope link src 10.0.2.15 metric 101 
+10.10.10.5 dev tun0 proto kernel scope link src 10.10.10.6 
+192.168.56.0/24 via 10.10.10.5 dev tun0 
+192.168.56.0/24 dev eth1 proto kernel scope link src 192.168.56.20 metric 100 
+```
